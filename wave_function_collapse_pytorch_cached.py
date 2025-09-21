@@ -1,3 +1,4 @@
+# ... (imports and Pattern, PatternCache classes remain the same) ...
 """
 Ultra-optimized PyTorch Wave Function Collapse with Advanced Caching
 Uses pattern caching, CUDA streams, and vectorized operations for maximum performance
@@ -156,6 +157,7 @@ class PatternCache:
 
 
 class WaveFunctionCollapsePyTorchCached:
+    # ... (__init__, set_progress_callback, stop methods remain the same) ...
     """Ultra-optimized PyTorch Wave Function Collapse with Advanced Caching"""
     
     def __init__(self, pattern_size: int = 3, output_width: int = 50, output_height: int = 50, cache_dir: str = "pattern_cache"):
@@ -212,8 +214,9 @@ class WaveFunctionCollapsePyTorchCached:
     def stop(self):
         """Stop the generation process"""
         self.should_stop = True
-        
-    def extract_patterns(self, image: np.ndarray) -> List[Pattern]:
+
+    # -- MODIFIED: Added extraction_callback parameter --
+    def extract_patterns(self, image: np.ndarray, extraction_callback=None) -> List[Pattern]:
         """Extract patterns from the source image - cached and ultra-optimized"""
         print("Extracting patterns from source image...")
         
@@ -243,11 +246,12 @@ class WaveFunctionCollapsePyTorchCached:
                 
                 processed_positions += 1
                 
-                # Log progress every 10%
-                if processed_positions % max(1, total_positions // 10) == 0:
+                # -- NEW: Use the extraction callback --
+                if extraction_callback and processed_positions % 100 == 0:
                     progress = (processed_positions / total_positions) * 100
-                    print(f"  Pattern extraction: {progress:.1f}% ({processed_positions}/{total_positions}) - Found {len(patterns)} unique patterns")
+                    extraction_callback(progress)
                     
+        # ... (rest of the method remains the same) ...
         print(f"Pattern extraction complete: {len(patterns)} unique patterns found")
         print("Creating pattern objects...")
         
@@ -272,7 +276,8 @@ class WaveFunctionCollapsePyTorchCached:
         
         print(f"Pattern extraction complete: {len(pattern_list)} unique patterns with neighbor relationships")
         return pattern_list
-        
+
+    # ... (the rest of the file remains the same) ...
     def _propagate_constraints_vectorized(self, start_y: int, start_x: int):
         """
         Propagate constraints using fully vectorized tensor operations on the GPU.
@@ -470,8 +475,9 @@ class WaveFunctionCollapsePyTorchCached:
             # Update progress less frequently to reduce CPU-GPU transfers
             if self.progress_callback and not self.should_stop and self.generation_steps % progress_update_interval == 0:
                 progress = self._calculate_progress()
-                # Don't pass current_state to avoid CPU-GPU transfer
-                self.progress_callback(progress, self.generation_steps, None)
+                # Get the current visualization and pass it to the callback
+                current_state = self._get_current_state()
+                self.progress_callback(progress, self.generation_steps, current_state)
                 
         return self._get_final_result()
         

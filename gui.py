@@ -14,6 +14,7 @@ import cv2
 import sys
 import io
 
+# ... (rest of the import section remains the same) ...
 # Try to import PyTorch CUDA version, fallback to optimized CPU if not available
 try:
     import torch
@@ -40,6 +41,7 @@ except (ImportError, RuntimeError, Exception) as e:
 
 
 class LogCapture:
+    # ... (LogCapture class remains the same) ...
     """Capture stdout and redirect to GUI log display"""
     
     def __init__(self, gui_instance):
@@ -73,6 +75,7 @@ class LogCapture:
 
 
 class WaveFunctionCollapseGUI:
+    # ... (__init__, setup_gui, setup_control_panel, setup_image_display remain the same) ...
     """Main GUI class for the Wave Function Collapse application"""
     
     def __init__(self):
@@ -187,26 +190,30 @@ class WaveFunctionCollapseGUI:
         self.canvas = FigureCanvasTkAgg(self.fig, display_frame)
         self.canvas.draw()
         self.canvas.get_tk_widget().grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
+
     def setup_progress_display(self, parent):
         """Set up progress and status display"""
-        progress_frame = ttk.LabelFrame(parent, text="Progress", padding="10")
-        progress_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E))
-        
-        # Progress bar
+        self.progress_frame = ttk.LabelFrame(parent, text="Progress", padding="10")
+        self.progress_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E))
+        self.progress_frame.columnconfigure(0, weight=1)
+
+        # -- NEW: Pattern Extraction Progress Bar --
+        self.pattern_progress_var = tk.DoubleVar()
+        self.pattern_progress_bar = ttk.Progressbar(self.progress_frame, variable=self.pattern_progress_var,
+                                                   maximum=100, length=400)
+        self.pattern_progress_label = ttk.Label(self.progress_frame, text="0%")
+
+        # -- Main Generation Progress Bar --
         self.progress_var = tk.DoubleVar()
-        self.progress_bar = ttk.Progressbar(progress_frame, variable=self.progress_var, 
+        self.progress_bar = ttk.Progressbar(self.progress_frame, variable=self.progress_var,
                                            maximum=100, length=400)
-        self.progress_bar.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 10))
-        
-        # Progress label
-        self.progress_label = ttk.Label(progress_frame, text="0%")
-        self.progress_label.grid(row=0, column=1)
-        
+        self.progress_label = ttk.Label(self.progress_frame, text="0%")
+
         # Status label
-        self.status_label = ttk.Label(progress_frame, text="Ready")
-        self.status_label.grid(row=1, column=0, columnspan=2, pady=(5, 0))
-        
+        self.status_label = ttk.Label(self.progress_frame, text="Ready")
+        self.status_label.grid(row=2, column=0, columnspan=2, pady=(5, 0))
+
+    # ... (setup_log_display, clear_log, append_log, load_image remain the same) ...
     def setup_log_display(self, parent):
         """Set up the log display area"""
         log_frame = ttk.LabelFrame(parent, text="Log Output", padding="10")
@@ -264,7 +271,7 @@ class WaveFunctionCollapseGUI:
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to load image: {str(e)}")
                 self.status_label.config(text="Failed to load image")
-                
+
     def start_generation(self):
         """Start the wave function collapse generation"""
         if self.source_image is None:
@@ -290,10 +297,15 @@ class WaveFunctionCollapseGUI:
         self.is_generating = True
         self.generate_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
-        self.progress_var.set(0)
-        self.progress_label.config(text="0%")
+
+        # -- NEW: Show pattern progress bar, hide main one --
+        self.pattern_progress_var.set(0)
         self.status_label.config(text="Extracting patterns...")
-        
+        self.pattern_progress_bar.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 10))
+        self.pattern_progress_label.grid(row=0, column=1)
+        self.progress_bar.grid_remove()
+        self.progress_label.grid_remove()
+
         # Clear log and start capturing
         self.clear_log()
         self.log_capture.start_capture()
@@ -305,7 +317,7 @@ class WaveFunctionCollapseGUI:
         )
         self.generation_thread.daemon = True
         self.generation_thread.start()
-        
+
     def run_generation(self, pattern_size, output_width, output_height):
         """Run the wave function collapse generation"""
         try:
@@ -319,13 +331,21 @@ class WaveFunctionCollapseGUI:
             
             # Extract patterns
             print("Starting pattern extraction...")
-            self.root.after(0, lambda: self.status_label.config(text="Extracting patterns..."))
-            self.wfc.extract_patterns(self.source_image)
+            # -- NEW: Pass the new callback to extract_patterns --
+            self.wfc.extract_patterns(self.source_image, self.update_extraction_progress)
             print("Pattern extraction completed")
             
+            # -- NEW: Switch to main generation progress bar --
+            def switch_bars():
+                self.pattern_progress_bar.grid_remove()
+                self.pattern_progress_label.grid_remove()
+                self.progress_bar.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 10))
+                self.progress_label.grid(row=0, column=1)
+                self.status_label.config(text="Generating...")
+            self.root.after(0, switch_bars)
+
             # Start generation
             print("Starting wave function collapse...")
-            self.root.after(0, lambda: self.status_label.config(text="Generating..."))
             result = self.wfc.collapse()
             print("Generation completed successfully")
             
@@ -340,15 +360,28 @@ class WaveFunctionCollapseGUI:
         finally:
             # Stop log capture
             self.log_capture.stop_capture()
-            
-    def update_progress(self, progress, steps, current_state):
-        """Update progress display (called from generation thread)"""
-        # Check if generation was stopped
+
+    # -- NEW: Callback function for the pattern extraction progress --
+    def update_extraction_progress(self, progress):
+        """Update pattern extraction progress display"""
         if not self.is_generating:
             return
             
         def update_ui():
-            # Double-check if generation was stopped (in case it was stopped between the check above and this callback)
+            if not self.is_generating:
+                return
+            self.pattern_progress_var.set(progress)
+            self.pattern_progress_label.config(text=f"{progress:.1f}%")
+
+        self.root.after(0, update_ui)
+
+    def update_progress(self, progress, steps, current_state):
+        # ... (This function remains the same as the previously updated version) ...
+        """Update progress display (called from generation thread)"""
+        if not self.is_generating:
+            return
+            
+        def update_ui():
             if not self.is_generating:
                 return
                 
@@ -356,11 +389,28 @@ class WaveFunctionCollapseGUI:
             self.progress_label.config(text=f"{progress:.1f}%")
             self.status_label.config(text=f"Generating... Step {steps}")
             
-            # Don't update visualization in real-time, just show progress
-            # The final result will be displayed when generation is complete
+            # --- REAL-TIME UPDATE LOGIC ---
+            # Check if we have valid image data to display
+            if current_state is not None and current_state.size > 0:
+                try:
+                    # Clear the previous image
+                    self.ax_output.clear()
+                    
+                    # Display the current state of the generation
+                    self.ax_output.imshow(current_state, cmap='gray', vmin=0, vmax=255)
+                    self.ax_output.set_title(f"Generating... ({progress:.1f}%)")
+                    self.ax_output.axis('off')
+                    
+                    # Redraw the canvas to show the update
+                    self.canvas.draw()
+                    self.canvas.flush_events()
+                except Exception as e:
+                    # This might happen if the GUI is closing, so we can ignore it
+                    pass
                 
         self.root.after(0, update_ui)
         
+    # ... (generation_complete, generation_error, stop_generation, and run methods remain the same) ...
     def generation_complete(self, result):
         """Handle generation completion"""
         self.is_generating = False
